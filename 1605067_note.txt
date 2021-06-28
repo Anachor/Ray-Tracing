@@ -1,0 +1,1 @@
+Compile with g++ -std=c++17 ./1605067_main.cpp -lglut -lGLU -lGL
