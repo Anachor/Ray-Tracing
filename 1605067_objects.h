@@ -3,15 +3,51 @@
 
 #include "1605067_geometry.h"
 #include <tuple>
+#include <algorithm>
 
 namespace Objects
 {
     const double INF = 1e100;
-    using Geometry::Point;
+    bool showAmbient  = true;
+    bool showSpecular = true;
+    bool showDiffuse  = true;
+    using namespace Geometry;
+
+    struct Color;
+    struct Ray;
+    struct Reflection_coefficients;
+    struct Object;
+    struct Light;
+
+    std::vector<Object*> objects;
+    std::vector<Light> lights;
+
     struct Color
     {
         double r, g, b; //Between [0, 1]
+        Color(double r, double g, double b) : r(r), g(g), b(b) {}
 
+        Color() {}
+        Color operator+(const Color &u) const
+        {
+            return Color(r + u.r, g + u.g, b + u.b);
+        }
+        Color operator-(const Color &u) const
+        {
+            return Color(r - u.r, g - u.g, b - u.b);
+        }
+        Color operator*(const double u) const
+        {
+            return Color(r * u, g * u, b * u);
+        }
+        Color operator/(const double u) const
+        {
+            return Color(r / u, g / u, b / u);
+        }
+        Color operator*(const Color &u) const
+        {
+            return Color(r * u.r, g * u.r, b * u.r);
+        }
         friend std::istream &operator>>(std::istream &is, Color &o)
         {
             return is >> o.r >> o.g >> o.b;
@@ -19,6 +55,12 @@ namespace Objects
         friend std::ostream &operator<<(std::ostream &os, const Color &o)
         {
             return os << o.r << " " << o.g << " " << o.b;
+        }
+
+        void clamp() {
+            r = std::clamp(r, 0.0, 1.0);
+            g = std::clamp(g, 0.0, 1.0);
+            b = std::clamp(b, 0.0, 1.0);
         }
     };
 
@@ -58,14 +100,71 @@ namespace Objects
 
         Object(Color color, Reflection_coefficients coefficients)
             : color(color), coefficients(coefficients)
-        {
-        }
+        {}
 
         Object() {}
 
-        virtual void draw() = 0;
-        //virtual Geometry::Point normal() {}
+        virtual bool onSurface(Point p) = 0;
+        virtual Point normal(Point p) = 0;
         virtual std::pair<double, Color> intersect(Ray r) = 0;
+        virtual void draw() = 0;
+        virtual ~Object() {}
+
+        std::pair<double, Color> intersect(Ray cameraRay, int level)
+        {
+            if (level == 0)
+                return this->intersect(cameraRay);
+
+            auto [distance, basecolor] = this->intersect(cameraRay);
+            if (distance == INF)        return  {INF, {}};
+            
+            Point X = cameraRay.a + Geometry::unit(cameraRay.dir)*distance; 
+            
+            Color color(0, 0, 0);
+            
+            ///Ambient
+            if (showAmbient) color =  color + basecolor * coefficients.ambient;
+
+            for (auto l: lights) {
+                Ray lightRay(l.position, X-l.position);
+                double lightDis = Geometry::length(X-l.position);
+                bool blocked = false;
+
+                Point N = this->normal(X);
+                Point L = Geometry::unit(l.position - X);
+                Point V = Geometry::unit(cameraRay.a - X);
+                Point R = N*2*Geometry::dot(L,N) - L;
+
+                
+                if (Geometry::dot(L,N) < 0)     N=N*-1;
+                if (Geometry::dcmp(Geometry::dot(V,N)) <= 0)     continue;
+
+                for (auto obj: objects) {
+                    auto [nwdis, color] = obj -> intersect(lightRay);
+                    if (nwdis >= 0 && Geometry::dcmp(nwdis-lightDis) < 0) {
+                        blocked = true;
+                        break;
+                    }
+                }
+
+                if (!blocked) {
+
+                    ///Diffuse
+                    double lambert = Geometry::dot(L, N);
+                    if (showDiffuse) 
+                        color = color + l.color*coefficients.diffuse*lambert*basecolor;
+
+                    ///Specular
+
+                    double phong = Geometry::dot(R, V);
+                    if (phong > 0 && showSpecular) 
+                        color = color + l.color * coefficients.specular * pow(phong, coefficients.exponent)*basecolor;
+                }
+            }
+
+            color.clamp();
+            return {distance, color};
+        };
     };
 
     struct Floor : Object
@@ -77,22 +176,38 @@ namespace Objects
         Floor(double floorWidth, double tileWidth, Color darkcolor, Color lightcolor)
             : floorWidth(floorWidth), tileWidth(tileWidth), darkcolor(darkcolor), lightcolor(lightcolor)
         {
+            coefficients = {0.2, 0.2, 0.2, 0.2, 20};
         }
+        
+
+        bool onSurface(Point P) override {
+            return Geometry::dcmp(P.z) == 0 &&
+                   abs(P.x) <= floorWidth / 2 &&
+                   abs(P.y) <= floorWidth / 2;
+        }
+        Point normal(Point p) override {
+            return Point(0, 0, 1);
+        }
+
         std::pair<double, Color> intersect(Ray r) override
         {
-            double len = Geometry::length(r.dir);
             double d = -r.a.z / r.dir.z;
+
             Point P = r.a + r.dir * d;
-            if (!(abs(P.x) <= floorWidth / 2 && abs(P.y) <= floorWidth / 2))
-                return {INF, {}};
+            if (!onSurface(P))  return {INF, {}};
+            
             int i = (P.x + floorWidth / 2) / tileWidth;
             int j = (P.y + floorWidth / 2) / tileWidth;
+
+            std::pair<double, Color> ans;
             if (i % 2 == j % 2)
-                return {d, darkcolor};
+                ans = {d, darkcolor};
             else
-                return {d, lightcolor};
+                ans = {d, lightcolor};
+            return ans;
         };
-        void draw()
+
+        void draw() override
         {
             assert(floorWidth > 0 && tileWidth > 0 && floorWidth / tileWidth <= 1000);
             for (auto [x, i] = std::make_tuple(-floorWidth / 2, 0); x <= floorWidth / 2; x += tileWidth, i++)
@@ -123,8 +238,15 @@ namespace Objects
         const static int stacks = 100, slices = 100;
 
         Sphere(Point center, double radius) : center(center), radius(radius)
-        {
+        {}
+
+        bool onSurface(Point P) override {
+            return dcmp(Geometry::length(P-center)) == 0;
         }
+        Point normal(Point p) override {
+            return Geometry::unit(p-center);
+        }
+
 
         std::pair<double, Color> intersect(Ray r) override
         {
@@ -142,14 +264,16 @@ namespace Objects
             if (Geometry::length(Z2 - center) < Geometry::length(Z1 - center))
                 D = -D;
 
+            std::pair<double, Color> ans;
             if (OX > radius)
                 return {INF, {}};
             else if (D + d < 0)
                 return {INF, {}};
-            else if (D - d >= 0)
-                return {D - d, color};
+            else if (D - d > 0)
+                ans = {D - d, color};
             else
-                return {D + d, color};
+                ans = {D + d, color};
+            return ans;
         }
 
         void draw() override
@@ -199,29 +323,42 @@ namespace Objects
     struct Triangle : Object
     {
         Point A, B, C;
+        Plane plane;
 
-        Triangle(Point A, Point B, Point C) : A(A), B(B), C(C)
-        {
-        }
-        std::pair<double, Color> intersect(Ray r) override
-        {
-            using namespace Geometry;
+        Triangle(Point A, Point B, Point C) : A(A), B(B), C(C), plane(A, B, C)
+        {}
 
-            Plane p(A, B, C);
-            double d = p.intersectLine({r.a, r.dir}) / length(r.dir);
-            if (d < 0)
-                return {INF, {}};
+        bool onSurface(Point O) override {
+            if (!plane.onPlane(O))  return false;
 
-            Point O = r.a + unit(r.dir) * d;
             double ABC = length(cross(A - B, B - C));
             double OAB = length(cross(A - O, B - O));
             double OBC = length(cross(B - O, C - O));
             double OCA = length(cross(C - O, A - O));
+            double rat = (OAB+OBC+OCA)/ABC;
+            
+            return Geometry::dcmp(rat-1) == 0;
+        }
 
-            if (Geometry::dcmp((OAB + OBC + OCA) / ABC - 1) <= 0)
-                return {d, color};
+        Point normal(Point p) override {
+            return unit(plane.normal);
+        }
+
+        std::pair<double, Color> intersect(Ray r) override
+        {
+            using namespace Geometry;
+            std::pair<double, Color> ans;
+
+            double d = plane.intersectLine({r.a, r.dir}) / length(r.dir);
+            if (d <= 0)      return {INF, {}};
+
+            Point O = r.a + unit(r.dir) * d;
+            if (onSurface(O))
+                ans = {d, color};
             else
                 return {INF, {}};
+
+            return ans;
         };
         void draw() override
         {
@@ -265,6 +402,15 @@ namespace Objects
         Geometry::Point reference_point;
         double length, width, height;
 
+        GeneralQuadricSurface(double A, double B, double C, double D, double E,
+                              double F, double G, double H, double I, double J,
+                              Geometry::Point reference_point,
+                              double length, double width, double height)
+            : A(A), B(B), C(C), D(D), E(E), F(F), G(G), H(H), I(I), J(J),
+              reference_point(reference_point), length(length), width(width), height(height)
+        {}
+        
+
         bool inRange(double x, double len, double X)
         {
             return len == 0 || (x <= X && X <= x + len);
@@ -279,42 +425,50 @@ namespace Objects
 
         bool onSurface(Point P)
         {
-            double z = A * P.x * P.x + B * P.y * P.y + C * P.z * P.z + D * P.x * P.y + E * P.x * P.z + F * P.y * P.z + G * P.x + H * P.y + I * P.z + J;
+            double z = A * P.x * P.x + B * P.y * P.y + C * P.z * P.z + 
+                       D * P.x * P.y + E * P.x * P.z + F * P.y * P.z + 
+                       G * P.x + H * P.y + I * P.z + J;
             return Geometry::dcmp(z) == 0;
         }
-
-        GeneralQuadricSurface(double A, double B, double C, double D, double E,
-                                double F, double G, double H, double I, double J,
-                                Geometry::Point reference_point,
-                                double length, double width, double height)
-            : A(A), B(B), C(C), D(D), E(E), F(F), G(G), H(H), I(I), J(J),
-              reference_point(reference_point), length(length), width(width), height(height)
+        Point normal(Point P)
         {
+            double ax = 2*A*P.x + D*P.y + E*P.z + G;
+            double ay = 2*B*P.y + D*P.x + F*P.z + H;
+            double az = 2*C*P.z + E*P.x + F*P.y + I;
+            Point ans(ax, ay, az);
+            return Geometry::unit(ans);
         }
+
         std::pair<double, Color> intersect(Ray r) override
         {
 
-            double qA = A * r.dir.x * r.dir.x + B * r.dir.y * r.dir.y + C * r.dir.z * r.dir.z + D * r.dir.x * r.dir.y + E * r.dir.x * r.dir.z + F * r.dir.y * r.dir.z;
+            double qA = A * r.dir.x * r.dir.x + B * r.dir.y * r.dir.y + C * r.dir.z * r.dir.z + 
+                        D * r.dir.x * r.dir.y + E * r.dir.x * r.dir.z + F * r.dir.y * r.dir.z;
 
-            double qB = 2 * A * r.a.x * r.dir.x + 2 * B * r.a.y * r.dir.y + 2 * C * r.a.z * r.dir.z + D * (r.a.x * r.dir.y + r.a.y * r.dir.x) + E * (r.a.z * r.dir.x + r.a.x * r.dir.z) + F * (r.a.y * r.dir.z + r.a.z * r.dir.y) + G * r.dir.x + H * r.dir.y + I * r.dir.z;
+            double qB = 2 * A * r.a.x * r.dir.x + 2 * B * r.a.y * r.dir.y + 2 * C * r.a.z * r.dir.z + 
+                        D * (r.a.x * r.dir.y + r.a.y * r.dir.x) + 
+                        E * (r.a.z * r.dir.x + r.a.x * r.dir.z) + 
+                        F * (r.a.y * r.dir.z + r.a.z * r.dir.y) + 
+                        G * r.dir.x + H * r.dir.y + I * r.dir.z;
 
-            double qC = A * r.a.x * r.a.x + B * r.a.y * r.a.y + C * r.a.z * r.a.z + D * r.a.x * r.a.y + E * r.a.x * r.a.z + F * r.a.y * r.a.z + G * r.a.x + H * r.a.y + I * r.a.z + J;
+            double qC = A * r.a.x * r.a.x + B * r.a.y * r.a.y + C * r.a.z * r.a.z + 
+                        D * r.a.x * r.a.y + E * r.a.x * r.a.z + F * r.a.y * r.a.z + 
+                        G * r.a.x + H * r.a.y + I * r.a.z + J;
 
             double closest = INF, len = Geometry::length(r.dir);
-            for (double d : solveQuadratic(qA, qB, qC))
-            {
+            for (double d : solveQuadratic(qA, qB, qC)) {
                 Point p = r.a + r.dir * d;
-                //assert(onSurface(p));
-                if (!inCube(p))
-                    continue;
+                if (!inCube(p))     continue;
                 d = d * len;
-                if (d < closest && d >= 0)
-                {
+                if (d < closest && d >= 0) {
                     closest = d;
                 }
             }
 
-            return {closest, color};
+            std::pair<double, Color> ans = {closest, color};
+            if (closest == INF) return ans;
+
+            return ans;
         };
         void draw() override
         {

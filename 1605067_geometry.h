@@ -1,12 +1,10 @@
 #ifndef __GEOMETRY_H__
 #define __GEOMETRY_H__
 
-#include "1605067_matrix.h"
 #include <cmath>
-
+#include <cassert>
 namespace Geometry {
-    const double PI = acos(-1), EPS = 1e-9;
-    using namespace Matrix;
+    const double PI = acos(-1), EPS = 1e-6;
 
     int dcmp(double x) { return abs(x) < EPS ? 0 : (x<0 ? -1 : 1);}
     double degreeToRadian(double rad) { return rad*PI/180; }
@@ -15,14 +13,6 @@ namespace Geometry {
         double x, y, z;
         Point() : x(0), y(0), z(0) {}
         Point(double X, double Y, double Z) : x(X), y(Y), z(Z) {}
-
-        Point(const Matrix::matrix &m) {
-            assert(m.size() == 4);
-            double w = m[3][0];
-            x = m[0][0]/w;
-            y = m[1][0]/w;
-            z = m[2][0]/w;
-        }
 
         Point operator + (const Point& u) const { 
             return Point(x + u.x, y + u.y, z + u.z); 
@@ -42,16 +32,6 @@ namespace Geometry {
         friend std::istream &operator >> (std::istream &is, Point &p) { 
             return is >> p.x >> p.y >> p.z; 
         }
-        
-        matrix getMatrix() const {
-            matrix ans = zeroMatrix(4, 1);
-            ans[0][0] = x;
-            ans[1][0] = y;
-            ans[2][0] = z;
-            ans[3][0] = 1;
-            return ans;
-        }
-
     };
     const Point Origin(0, 0, 0);
 
@@ -66,10 +46,6 @@ namespace Geometry {
     }
     double distance(Point a, Point b) {
         return length(a-b);
-    }
-
-    Point apply(const matrix &tr, const Point &p) {
-        return Point(tr * p.getMatrix());
     }
 
     Point unit(const Point &p) {

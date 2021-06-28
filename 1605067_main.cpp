@@ -18,7 +18,7 @@ namespace GL
 {
     ///Constants
     const double Delta = 10, AngleDelta = Geometry::PI / 30;
-    const Geometry::Point POS(150, 0, 50), LOOK(-1, 0, 0);
+    const Geometry::Point POS(170, 0, 100), LOOK(-1, 0, 0);
     const Geometry::Point UP(0, 0, 1), RIGHT(0, 1, 0);
     const double fovy = 90, aspect_ratio = 1.33, near = 1, far = 10000;
     const double floorWidth = 1000, tileWidth = 20;
@@ -33,8 +33,6 @@ namespace GL
     bool showaxis;
     int recursion_depth;
 
-    std::vector<Objects::Object *> objects;
-    std::vector<Objects::Light> lights;
     int imageWidth, imageHeight;
 
     ///Keyboard/Mouse interaction
@@ -55,8 +53,12 @@ namespace GL
     ///Capture
     void capture();
 
-    ///Helpers
+    ///Logging
+    void printInfo();
     void printCameraInfo();
+    void printAmbientInfo();
+    void printSpecularInfo();
+    void printDiffuseInfo();
 
 
     void printCameraInfo()
@@ -67,6 +69,28 @@ namespace GL
         std::cout << "up: " << up << " ";
         std::cout << "right: " << right << " ";
         std::cout << std::endl;
+    }
+
+    void printAmbientInfo() {
+        std::cout<<"Ambient Lighting "<<(Objects::showAmbient ? "On" : "Off")<<std::endl;
+    }
+
+
+    void printDiffuseInfo() {
+        std::cout<<"Diffuse Lighting "<<(Objects::showDiffuse ? "On" : "Off")<<std::endl;
+    }
+
+
+    void printSpecularInfo() {
+        std::cout<<"Specular Lighting "<<(Objects::showSpecular ? "On" : "Off")<<std::endl;
+    }
+    void printSpecularInfo();
+    void printDiffuseInfo();
+    void printInfo() {
+        printCameraInfo();
+        printAmbientInfo();
+        printSpecularInfo();
+        printDiffuseInfo();
     }
 
     //https://stackoverflow.com/a/10467633
@@ -86,7 +110,8 @@ namespace GL
     }
 
     void keyboardListener(unsigned char key, int x, int y)
-    {
+    {            
+        std::string s;
         using Geometry::PI;
         switch (key)
         {
@@ -120,8 +145,24 @@ namespace GL
             up = UP;
             right = RIGHT;
             break;
+        case 'a':
+            Objects::showAmbient ^= 1;
+            printAmbientInfo();
+            break;
+        case 's':
+            Objects::showSpecular ^= 1;
+            printSpecularInfo();
+            break;
+        case 'd':
+            Objects::showDiffuse ^= 1;
+            printDiffuseInfo();
+            break;
         case 'z':
             exit(0);
+            break;
+        case ' ':
+            std::cout<<"Input Camera Info: ";
+            std::cin>>s>>pos>>s>>look>>s>>up>>s>>right;
             break;
         case 'c':
         case '0':
@@ -176,7 +217,7 @@ namespace GL
             break;
         case GLUT_MIDDLE_BUTTON:
             if (state == GLUT_DOWN)
-                printCameraInfo();
+                printInfo();
             break;
         default:
             break;
@@ -193,7 +234,7 @@ namespace GL
         int nObjects;
         sceneFile >> nObjects;
         assert(0 <= nObjects && nObjects <= MAX_OBJ);
-        objects.resize(nObjects);
+        Objects::objects.resize(nObjects);
 
         for (int i = 0; i < nObjects; i++)
         {
@@ -201,7 +242,7 @@ namespace GL
             std::string type;
             sceneFile >> type;
 
-            Objects::Object *obj;
+            Objects::Object *obj = nullptr;
             std::cout << "Found " << type << std::endl;
 
             if (type == "sphere")
@@ -234,20 +275,20 @@ namespace GL
             sceneFile >> cof.ambient >> cof.diffuse >> cof.specular >> cof.recursive >> cof.exponent;
             obj->coefficients = cof;
 
-            objects[i] = obj;
+            if (obj != nullptr) Objects::objects[i] = obj;
         }
         int nLights;
         sceneFile >> nLights;
         assert(0 <= nLights && nLights <= MAX_OBJ);
-        lights.resize(nLights);
+        Objects::lights.resize(nLights);
 
         for (int i = 0; i < nLights; i++)
         {
             Objects::Light light;
             sceneFile >> light.position >> light.color;
-            lights[i] = light;
+            Objects::lights[i] = light;
         }
-        objects.push_back(new Objects::Floor(floorWidth, tileWidth, BLACK, WHITE));
+        Objects::objects.push_back(new Objects::Floor(floorWidth, tileWidth, BLACK, WHITE));
         sceneFile.close();
     }
 
@@ -270,10 +311,16 @@ namespace GL
         gluPerspective(fovy, aspect_ratio, near, far);
     }
 
+	void clear() {
+		for (auto x: Objects::objects)	delete x;
+		Objects::objects.clear();
+		Objects::lights.clear();
+	}
+
     void drawObjects()
     {
-        for (auto o : objects)    o->draw();
-        for (auto l : lights)    l.draw();
+        for (auto o : Objects::objects)    o->draw();
+        for (auto l : Objects::lights)    l.draw();
     }
 
     void drawAxis()
@@ -336,8 +383,6 @@ namespace GL
         Point topleft = pos + look*planeDistance - right*windowWidth/2 + up*windowHeight/2;
         topleft = topleft + right*du/2 - up*dv/2;
 
-		std::cout<<planeDistance<<std::endl;
-
         for (int x=0; x<imageWidth; x++) {
             for (int y=0; y<imageHeight; y++) {
                 Point curPixel = topleft + right*du*x - up*dv*y;
@@ -350,8 +395,8 @@ namespace GL
                 double minDistance = INF;
                 Color closestColor = BLACK;
 
-                for (auto obj: objects) {
-                    auto [distance, color] = obj -> intersect(ray);
+                for (auto obj: Objects::objects) {
+                    auto [distance, color] = obj -> intersect(ray, recursion_depth);
                     if (distance >= 0 && distance < minDistance) {
                         minDistance = distance;
                         closestColor = color;
@@ -400,6 +445,7 @@ int main(int argc, char **argv)
     glutMouseFunc(mouseListener);
 
     glutMainLoop(); //The main loop of OpenGL
+	clear();
 
     return 0;
 }
