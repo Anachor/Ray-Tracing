@@ -225,7 +225,7 @@ namespace GL
                 sceneFile >> A >> B >> C >> D >> E >> F >> G >> H >> I >> J;
                 sceneFile >> ref >> length >> width >> height;
 
-                obj = new Objects::GeneralQuadraticSurface(A, B, C, D, E, F, G, H, I, J, ref, length, width, height);
+                obj = new Objects::GeneralQuadricSurface(A, B, C, D, E, F, G, H, I, J, ref, length, width, height);
             }
 
             sceneFile >> obj->color;
