@@ -9,9 +9,9 @@
 #include <filesystem>
 #include <GL/glut.h>
 
-#include "1605067_geometry.h"
-#include "1605067_objects.h"
-#include "1605067_bitmap_image.hpp"
+#include "geometry.h"
+#include "objects.h"
+#include "bitmap_image.hpp"
 
 
 namespace GL

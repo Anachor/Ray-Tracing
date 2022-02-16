@@ -1,7 +1,7 @@
-#ifndef __1605067_OBJECTS_H__
-#define __1605067_OBJECTS_H__
+#ifndef __OBJECTS_H__
+#define __OBJECTS_H__
 
-#include "1605067_geometry.h"
+#include "geometry.h"
 #include <tuple>
 #include <algorithm>
 
@@ -478,4 +478,4 @@ namespace Objects
 
 }
 
-#endif // __1605067_OBJECTS_H__
+#endif // __OBJECTS_H__

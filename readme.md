@@ -31,14 +31,14 @@ Defines the scene to be rendered, including:
 - Light source properties (position, color)
 - Camera configuration and rendering parameters
 
-### `1605067_objects.h`
+### `objects.h`
 Contains the implementation of:
 - Geometric objects (spheres, triangles, quadric surfaces, floor)
 - Lighting and shading calculations
 - Ray-object intersection logic
 - Recursive ray tracing algorithm
 
-### `1605067_geometry.h`
+### `geometry.h`
 Provides geometric utilities for vector and point operations, such as:
 - Dot and cross products
 - Distance calculations
@@ -47,5 +47,11 @@ Provides geometric utilities for vector and point operations, such as:
 ## How to Run
 
 1. Define the scene in `scene.txt`.
-2. Compile the project using a `g++ -O2 1605067_main.cpp -lglut -lGL -lGLU`
+2. Compile the project using a `g++ -O2 main.cpp -lglut -lGL -lGLU`
 3. Run the executable to render the scene.
+
+
+
+## Acknowledgments
+
+This project is part of a ray-tracing assignment and uses OpenGL for rendering. Additionally, the project makes use of the `bitmap_image` library for image generation and output.
